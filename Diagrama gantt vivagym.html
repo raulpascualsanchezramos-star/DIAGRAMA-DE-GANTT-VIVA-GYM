@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diagrama de Gantt — VivaGym Alberto Aguilera</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #161922;
+    --border: #252836;
+    --accent1: #ff5c28;
+    --accent2: #00c9a7;
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --label-w: 260px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    padding: 40px 32px;
+  }
+
+  header { margin-bottom: 36px; }
+
+  .badge {
+    display: inline-block;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: .12em; text-transform: uppercase;
+    background: var(--accent1); color: #fff;
+    padding: 4px 10px; border-radius: 4px; margin-bottom: 10px;
+  }
+
+  h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(28px, 4vw, 48px);
+    letter-spacing: .04em; line-height: 1;
+  }
+  h1 span { color: var(--accent1); }
+  .subtitle { margin-top: 8px; font-size: 13px; color: var(--muted); font-weight: 300; }
+
+  .legend { display: flex; gap: 24px; margin: 28px 0 20px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+
+  .gantt-wrapper { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); }
+  .gantt { min-width: 820px; background: var(--surface); }
+
+  /* Every row = label cell + 5 equal month cells */
+  .g-row {
+    display: grid;
+    grid-template-columns: var(--label-w) repeat(5, 1fr);
+    min-height: 52px;
+    border-bottom: 1px solid var(--border);
+  }
+  .g-row:last-of-type { border-bottom: none; }
+
+  /* HEADER */
+  .g-head { position: sticky; top: 0; z-index: 10; background: var(--surface); }
+  .g-head .g-row { border-bottom: 2px solid var(--border); min-height: 44px; }
+
+  .head-lbl {
+    padding: 0 20px;
+    font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    border-right: 1px solid var(--border);
+    display: flex; align-items: center;
+  }
+
+  .month-cell {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+    border-right: 1px solid var(--border);
+  }
+  .month-cell:last-child { border-right: none; }
+
+  /* SECTION HEADERS */
+  .g-sec { background: #1b1f2b; }
+  .g-sec .g-row { min-height: 38px; border-bottom: 1px solid var(--border); }
+
+  .sec-lbl {
+    padding: 0 20px;
+    font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    border-right: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .sec-num {
+    width: 18px; height: 18px; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; flex-shrink: 0;
+  }
+  .sec-col { border-right: 1px solid var(--border); }
+  .sec-col:last-child { border-right: none; }
+
+  /* TASK ROWS */
+  .g-task { transition: background .15s; }
+  .g-task:hover { background: rgba(255,255,255,.025); }
+
+  .task-lbl {
+    padding: 0 20px;
+    display: flex; flex-direction: column; justify-content: center; gap: 3px;
+    border-right: 1px solid var(--border);
+  }
+  .task-name { font-size: 13px; font-weight: 500; }
+  .task-meta { font-size: 11px; color: var(--muted); }
+
+  /* Each month cell in a task row */
+  .tcell {
+    border-right: 1px solid #1d2030;
+    position: relative;   /* bar is positioned relative to THIS cell */
+    min-height: 52px;
+  }
+  .tcell:last-child { border-right: none; }
+
+  /*
+   * Bar is absolute inside its START cell.
+   * width is set via JS: (span * colPct - padding*2)% relative to the GRID TRACK area.
+   * Because the bar is inside a cell that is 1 column wide, to span N columns
+   * we need width = N * 100% (where 100% = one column width).
+   * We use calc() for this.
+   */
+  .bar {
+    position: absolute;
+    top: 50%; transform: translateY(-50%);
+    left: 4px;
+    height: 22px; border-radius: 5px;
+    display: flex; align-items: center;
+    padding: 0 10px;
+    font-size: 10px; font-weight: 600; letter-spacing: .03em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    opacity: 0;
+    animation: barIn .4s ease forwards;
+  }
+  @keyframes barIn {
+    from { opacity: 0; transform: translateY(-50%) scaleX(.5); }
+    to   { opacity: 1; transform: translateY(-50%) scaleX(1); }
+  }
+
+  .bar-a1 { background: linear-gradient(90deg,#ff5c28,#ff8560); color:#fff; }
+  .bar-a2 { background: linear-gradient(90deg,#00c9a7,#00e8c5); color:#041a14; }
+
+  /* SUMMARY */
+  .g-summary {
+    background: #12151f;
+    border-top: 2px solid var(--border);
+    padding: 18px 24px;
+    display: flex; gap: 40px; flex-wrap: wrap; align-items: center;
+  }
+  .kpi { display: flex; flex-direction: column; gap: 2px; }
+  .kpi-val { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: .04em; }
+  .kpi-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="badge">Plan de Acción 2026</div>
+  <h1>Diagrama de <span>Gantt</span></h1>
+  <p class="subtitle">VivaGym Alberto Aguilera · Dos acciones de mejora operativa · Horizonte 5 meses</p>
+</header>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#ff5c28"></div>Acción 1 — Operario de Refuerzo de Limpieza</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#00c9a7"></div>Acción 2 — Protocolo de Validación de Cobros</div>
+</div>
+
+<div class="gantt-wrapper"><div class="gantt">
+
+  <!-- HEADER -->
+  <div class="g-head">
+    <div class="g-row">
+      <div class="head-lbl">Fase / Tarea</div>
+      <div class="month-cell">Mes 1</div>
+      <div class="month-cell">Mes 2</div>
+      <div class="month-cell">Mes 3</div>
+      <div class="month-cell">Mes 4</div>
+      <div class="month-cell">Mes 5</div>
+    </div>
+  </div>
+
+  <!-- ══════════ ACCIÓN 1 ══════════ -->
+  <div class="g-sec">
+    <div class="g-row">
+      <div class="sec-lbl" style="color:#ff5c28;">
+        <div class="sec-num" style="background:#ff5c28;color:#fff;">1</div>
+        Operario de Refuerzo de Limpieza
+      </div>
+      <div class="sec-col"></div><div class="sec-col"></div>
+      <div class="sec-col"></div><div class="sec-col"></div><div class="sec-col"></div>
+    </div>
+  </div>
+
+  <!-- Rows: bar data-span = number of columns the bar covers (integer) -->
+
+  <div class="g-task g-row">
+    <div class="task-lbl"><span class="task-name">Publicación de vacante y selección</span><span class="task-meta">RR.HH.</span></div>
+    <div class="tcell"><div class="bar bar-a1" data-span="1" style="animation-delay:.05s">Publicar y seleccionar</div></div>
+    <div class="tcell"></div><div class="tcell"></div><div class="tcell"></div><div class="tcell"></div>
+  </div>
+
+  <div class="g-task g-row">
+    <div class="task-lbl"><span class="task-name">Firma de contrato indefinido + PRL</span><span class="task-meta">RR.HH.</span></div>
+    <div class="tcell"><div class="bar bar-a1" data-span="1" style="animation-delay:.10s">Contrato + PRL</div></div>
+    <div class="tcell"></div><div class="tcell"></div><div class="tcell"></div><div class="tcell"></div>
+  </div>
+
+  <div class="g-task g-row">
+    <div class="task-lbl"><span class="task-name">Implantación jornada partida</span><span class="task-meta">Coordinación de Centro</span></div>
+    <div class="tcell"><div class="bar bar-a1" data-span="2" style="animation-delay:.15s">07:00–11:00 / 17:30–21:30</div></div>
+    <div class="tcell"></div><div class="tcell"></div><div class="tcell"></div><div class="tcell"></div>
+  </div>
+
+  <div class="g-task g-row">
+    <div class="task-lbl"><span class="task-name">Protocolo de limpieza + dotación EPIs</span><span class="task-meta">Operaciones</span></div>
+    <div class="tcell"><div class="bar bar-a1" data-span="2" style="animation-delay:.20s">Uniformidad + herramientas</div></div>
+    <div class="tcell"></div><div class="tcell"></div><div class="tcell"></div><div class="tcell"></div>
+  </div>
+
+  <div class="g-task g-row">
+    <div class="task-lbl"><span class="task-name">Compra centralizada stock de higiene</span><span class="task-meta">Administración y Finanzas</span></div>
+    <div class="tcell"></div>
+    <div class="tcell"><div class="bar bar-a1" data-span="1" style="animation-delay:.25s">Jabón, papel, desinfectante</div></div>
+    <div class="tcell"></div><div class="tcell"></div><div class="tcell"></div>
+  </div>
+
+  <div class="g-task g-row">
+    <div class="task-lbl"><span class="task-name">Análisis retención socios + vacaciones</span><span class="task-meta">Coordinación de Centro</span></div>
+    <div class="tcell"></div><div class="tcell"></div>
+    <div class="tcell"><div class="bar bar-a1" data-span="1" style="animation-delay:.30s">Evaluación KPI + planif. vacaciones</div></div>
+    <div class="tcell"></div><div class="tcell"></div>
+  </div>
+
+  <div class="g-task g-row">
+    <div class="task-lbl"><span class="task-name">Seguimiento y optimización continua</span><span class="task-meta">Coordinación de Centro</span></div>
+    <div class="tcell"></div><div class="tcell"></div>
+    <div class="tcell"><div class="bar bar-a1" data-span="3" style="animation-delay:.35s">Monitoreo permanente</div></div>
+    <div class="tcell"></div><div class="tcell"></div>
+  </div>
+
+  <!-- ══════════ ACCIÓN 2 ══════════ -->
+  <div class="g-sec">
+    <div class="g-row">
+      <div class="sec-lbl" style="color:#00c9a7;">
+        <div class="sec-num" style="background:#00c9a7;color:#041a14;">2</div>
+        Protocolo de Validación de Cobros
+      </div>
+      <div class="sec-col"></div><div class="sec-col"></div>
+      <div class="sec-col"></div><div class="sec-col"></div><div class="sec-col"></div>
+    </div>
+  </div>
+
+  <div class="g-task g-row">
+    <div class="task-lbl"><span class="task-name">Auditoría del proceso actual</span><span class="task-meta">Dir. Operaciones + IT</span></div>
+    <div class="tcell"><div class="bar bar-a2" data-span="1" style="animation-delay:.40s">Análisis flujo de bajas</div></div>
+    <div class="tcell"></div><div class="tcell"></div><div class="tcell"></div><div class="tcell"></div>
+  </div>
+
+  <div class="g-task g-row">
+    <div class="task-lbl"><span class="task-name">Diseño del protocolo de validación</span><span class="task-meta">Administración</span></div>
+    <div class="tcell"></div>
+    <div class="tcell"><div class="bar bar-a2" data-span="1" style="animation-delay:.45s">Definición procedimiento</div></div>
+    <div class="tcell"></div><div class="tcell"></div><div class="tcell"></div>
+  </div>
+
+  <div class="g-task g-row">
+    <div class="task-lbl"><span class="task-name">Configuración de reportes (IT)</span><span class="task-meta">Departamento IT</span></div>
+    <div class="tcell"></div>
+    <div class="tcell"><div class="bar bar-a2" data-span="1" style="animation-delay:.50s">Automatizar reportes CRM</div></div>
+    <div class="tcell"></div><div class="tcell"></div><div class="tcell"></div>
+  </div>
+
+  <div class="g-task g-row">
+    <div class="task-lbl"><span class="task-name">Prueba piloto (centros seleccionados)</span><span class="task-meta">Managers de Centro</span></div>
+    <div class="tcell"></div><div class="tcell"></div>
+    <div class="tcell"><div class="bar bar-a2" data-span="1" style="animation-delay:.55s">Piloto controlado</div></div>
+    <div class="tcell"></div><div class="tcell"></div>
+  </div>
+
+  <div class="g-task g-row">
+    <div class="task-lbl"><span class="task-name">Formación del personal administrativo</span><span class="task-meta">Administración</span></div>
+    <div class="tcell"></div><div class="tcell"></div>
+    <div class="tcell"><div class="bar bar-a2" data-span="1" style="animation-delay:.60s">20 h formación</div></div>
+    <div class="tcell"></div><div class="tcell"></div>
+  </div>
+
+  <div class="g-task g-row">
+    <div class="task-lbl"><span class="task-name">Implementación en toda la red</span><span class="task-meta">Operaciones + Finanzas</span></div>
+    <div class="tcell"></div><div class="tcell"></div><div class="tcell"></div>
+    <div class="tcell"><div class="bar bar-a2" data-span="2" style="animation-delay:.65s">Roll-out completo</div></div>
+    <div class="tcell"></div>
+  </div>
+
+  <div class="g-task g-row">
+    <div class="task-lbl"><span class="task-name">Seguimiento KPIs (incidencias / resolución)</span><span class="task-meta">Dir. Operaciones</span></div>
+    <div class="tcell"></div><div class="tcell"></div><div class="tcell"></div>
+    <div class="tcell"><div class="bar bar-a2" data-span="2" style="animation-delay:.70s">Tasa incidencias &lt; 50%</div></div>
+    <div class="tcell"></div>
+  </div>
+
+  <!-- SUMMARY -->
+  <div class="g-summary">
+    <div class="kpi"><span class="kpi-val" style="color:#ff5c28;">28.667 €</span><span class="kpi-lbl">Inversión anual A1</span></div>
+    <div class="kpi"><span class="kpi-val" style="color:#00c9a7;">6.000 €</span><span class="kpi-lbl">Coste proyecto A2</span></div>
+    <div class="kpi"><span class="kpi-val" style="color:#e8eaf0;">5 meses</span><span class="kpi-lbl">Horizonte total</span></div>
+    <div class="kpi"><span class="kpi-val" style="color:#e8eaf0;">2 acciones</span><span class="kpi-lbl">En paralelo</span></div>
+  </div>
+
+</div></div>
+
+<script>
+/* 
+ * Each .bar lives inside its START cell (.tcell).
+ * data-span = how many columns it covers.
+ * Since the bar is inside 1 column, to span N columns:
+ *   width = calc(N * 100% - 8px)   (100% = one column's width, 8px = 2×left-offset)
+ */
+document.querySelectorAll('.bar').forEach(bar => {
+  const span = parseInt(bar.dataset.span, 10) || 1;
+  bar.style.width = 'calc(' + span + ' * 100% - 8px)';
+});
+</script>
+
+</body>
+</html>
